@@ -38,7 +38,27 @@
   <ol id="out"></ol>
 </main>
 <script>
+// Pure-JS SHA-256 fallback for phones where crypto.subtle is missing (file opened from WhatsApp).
+function sha256js(bytes) {
+  const K = [], H = [], isP = n => { for (let f = 2; f * f <= n; f++) if (n % f === 0) return false; return true; };
+  for (let n = 2, i = 0; i < 64; n++) if (isP(n)) { if (i < 8) H[i] = (Math.pow(n, 1 / 2) * 2 ** 32) | 0; K[i++] = (Math.pow(n, 1 / 3) * 2 ** 32) | 0; }
+  const l = bytes.length, m = new Uint8Array(((l + 9 + 63) >> 6) << 6); m.set(bytes); m[l] = 0x80;
+  const dv = new DataView(m.buffer); dv.setUint32(m.length - 4, l * 8); dv.setUint32(m.length - 8, Math.floor(l / 2 ** 29));
+  const r = (x, n) => (x >>> n) | (x << (32 - n)), w = new Array(64);
+  for (let o = 0; o < m.length; o += 64) {
+    for (let t = 0; t < 64; t++) w[t] = t < 16 ? dv.getUint32(o + t * 4) : (r(w[t-2],17) ^ r(w[t-2],19) ^ (w[t-2] >>> 10)) + w[t-7] + (r(w[t-15],7) ^ r(w[t-15],18) ^ (w[t-15] >>> 3)) + w[t-16] | 0;
+    let [a, b, c, d, e, f, g, h] = H;
+    for (let t = 0; t < 64; t++) {
+      const t1 = h + (r(e,6) ^ r(e,11) ^ r(e,25)) + ((e & f) ^ (~e & g)) + K[t] + w[t] | 0;
+      const t2 = (r(a,2) ^ r(a,13) ^ r(a,22)) + ((a & b) ^ (a & c) ^ (b & c)) | 0;
+      h = g; g = f; f = e; e = d + t1 | 0; d = c; c = b; b = a; a = t1 + t2 | 0;
+    }
+    [a, b, c, d, e, f, g, h].forEach((v, i) => { H[i] = H[i] + v | 0; });
+  }
+  return H.map(v => (v >>> 0).toString(16).padStart(8, '0')).join('');
+}
 async function sha256hex(s) {
+  if (!(globalThis.crypto && crypto.subtle)) return sha256js(new TextEncoder().encode(s));
   const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
   return Array.from(new Uint8Array(d), b => b.toString(16).padStart(2, '0')).join('');
 }
@@ -55,7 +75,6 @@ if (typeof document !== 'undefined') {
   const $ = id => document.getElementById(id);
   $('go').addEventListener('click', async () => {
     $('err').textContent = ''; $('ok').textContent = ''; $('out').textContent = '';
-    if (!(globalThis.crypto && crypto.subtle)) { $('err').textContent = 'الحساب ما بيشتغل هيك. افتح الملف مباشرة من الموبايل، أو من رابط https'; return; }
     const raw = $('n').value.trim().replace(/[٠-٩]/g, d => d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d => d.charCodeAt(0) - 0x6F0);
     try {
       const keys = await draw($('h').value, /^\d+$/.test(raw) ? Number(raw) : NaN);
@@ -70,7 +89,7 @@ if (typeof document !== 'undefined') {
     } catch (e) { $('err').textContent = e.message; }
   });
 }
-if (typeof module !== 'undefined') module.exports = { draw };
+if (typeof module !== 'undefined') module.exports = { draw, sha256js };
 </script>
 </body>
 </html>
