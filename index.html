@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تحقق من القرعة</title>
+<!-- T-559 (D-113). Same algorithm as draw.py: key(i) = SHA-256("<hash>:<i>"), sorted ascending; first = month 1. Numbers only, no names. Works offline. -->
+<style>
+  :root { --bg:#f6f4ee; --fg:#1d2a2a; --card:#fff; --line:#d9d4c7; --accent:#0f6b66; --err:#a3261d; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121816; --fg:#e8e4da; --card:#1b2422; --line:#33403d; --accent:#4fb3ab; --err:#ff8a7d; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:17px/1.6 system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif; }
+  main { max-width:560px; margin:0 auto; padding:20px 16px 40px; }
+  h1 { font-size:1.4rem; margin:0 0 6px; color:var(--accent); }
+  p.help { margin:0 0 18px; opacity:.85; }
+  label { display:block; font-weight:600; margin:14px 0 6px; }
+  input { width:100%; font:inherit; padding:12px; border:1px solid var(--line); border-radius:10px; background:var(--card); color:var(--fg); direction:ltr; text-align:left; }
+  button { margin-top:18px; width:100%; font:inherit; font-weight:700; padding:14px; border:0; border-radius:10px; background:var(--accent); color:#fff; }
+  #ok { color:var(--accent); font-weight:600; }
+  #err { color:var(--err); margin-top:12px; min-height:1.4em; }
+  ol { list-style:none; padding:0; margin:18px 0 0; }
+  li { display:flex; justify-content:space-between; gap:12px; padding:10px 12px; background:var(--card); border:1px solid var(--line); border-radius:10px; margin-bottom:8px; }
+  li b { color:var(--accent); }
+  code { direction:ltr; unicode-bidi:embed; font-size:.8rem; opacity:.6; }
+</style>
+</head>
+<body>
+<main>
+  <h1>تحقق من قرعة جمعية العيلة</h1>
+  <p class="help">حط رقم الـ hash تبع البلوك اللي انعلن بالجروب، وعدد الأسامي، واكبس «طلّع الترتيب». لازم يطلعلك نفس الترتيب اللي انعلن. الصفحة بتشتغل بلا نت.</p>
+  <label for="h">hash البلوك (64 حرف)</label>
+  <input id="h" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="000000000000000000…">
+  <label for="n">عدد الأسامي</label>
+  <input id="n" type="text" inputmode="numeric" autocomplete="off" placeholder="20">
+  <button id="go" type="button">طلّع الترتيب</button>
+  <div id="err" role="alert"></div>
+  <div id="ok"></div>
+  <ol id="out"></ol>
+</main>
+<script>
+async function sha256hex(s) {
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  return Array.from(new Uint8Array(d), b => b.toString(16).padStart(2, '0')).join('');
+}
+async function draw(hash, n) {
+  const h = String(hash).replace(/[\s\u200B-\u200F\u2066-\u2069\uFEFF]/g, '').toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(h)) throw new Error('الـ hash لازم يكون 64 حرف من 0-9 و a-f');
+  if (!Number.isInteger(n) || n < 1 || n > 200) throw new Error('عدد الأسامي لازم يكون رقم صحيح بين 1 و 200');
+  const keys = [];
+  for (let i = 1; i <= n; i++) keys.push([await sha256hex(h + ':' + i), i]);
+  keys.sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] - b[1]);
+  return keys;
+}
+if (typeof document !== 'undefined') {
+  const $ = id => document.getElementById(id);
+  $('go').addEventListener('click', async () => {
+    $('err').textContent = ''; $('ok').textContent = ''; $('out').textContent = '';
+    if (!(globalThis.crypto && crypto.subtle)) { $('err').textContent = 'الحساب ما بيشتغل هيك. افتح الملف مباشرة من الموبايل، أو من رابط https'; return; }
+    const raw = $('n').value.trim().replace(/[٠-٩]/g, d => d.charCodeAt(0) - 0x660).replace(/[۰-۹]/g, d => d.charCodeAt(0) - 0x6F0);
+    try {
+      const keys = await draw($('h').value, /^\d+$/.test(raw) ? Number(raw) : NaN);
+      keys.forEach(([k, i], m) => {
+        const li = document.createElement('li');
+        const mo = 10 + m, label = (mo % 12 + 1) + '/' + (2026 + Math.floor(mo / 12));
+        li.innerHTML = '<span>' + label + ': <b>الاسم رقم ' + i + '</b></span><code>' + k.slice(0, 12) + '</code>';
+        $('out').appendChild(li);
+      });
+      const ok = keys.map(x => x[1]).sort((a, b) => a - b).every((v, j) => v === j + 1);
+      if (ok) $('ok').textContent = '✓ كل رقم من 1 لـ ' + keys.length + ' طلع مرة وحدة'; else $('err').textContent = 'في رقم ناقص أو مكرر!';
+    } catch (e) { $('err').textContent = e.message; }
+  });
+}
+if (typeof module !== 'undefined') module.exports = { draw };
+</script>
+</body>
+</html>
